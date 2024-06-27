@@ -1,0 +1,104 @@
+---
+title: "SVM"
+author: "Diego Rodríguez"
+date: "2024-06-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Cargar el paquete
+library(e1071)
+
+# Cargar el conjunto de datos
+data(dconGlobal)
+
+# Visualizar las primeras filas del conjunto de datos
+head(dconGlobal)
+
+# Establecer una semilla para la reproducibilidad
+set.seed(123)
+
+# Mezclar las filas del conjunto de datos
+indexes <- sample(1:nrow(dconGlobal), size = 0.8 * nrow(dconGlobal))
+
+# Dividir los datos en entrenamiento y prueba
+train_data <- dconGlobal[indexes, ]
+test_data <- dconGlobal[-indexes, ]
+
+# Entrenar el modelo SVM
+svm_model <- svm(informe ~ ., data = train_data, kernel = "linear")
+
+# Visualizar el modelo
+summary(svm_model)
+
+# Hacer predicciones
+predictions <- predict(svm_model, test_data)
+
+# Mostrar las predicciones
+print(predictions)
+
+prediccionesSegmentado <- ifelse(predictions < 0.5, 0, 1)
+
+
+# Crear una tabla de confusión
+conf_matrix <- table(Predicted = prediccionesSegmentado, Actual = test_data$informe)
+
+# Mostrar la tabla de confusión
+print(conf_matrix)
+
+
+# Calcular la precisión
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Precisión:", accuracy))
+
+
+# Convertir probabilidades a clases
+pred_clases <- ifelse(predictions > 0.5, 1, 0)
+
+# Matriz de confusión
+library(caret)
+(conf_matrix <- confusionMatrix(factor(pred_clases), factor(test_data$informe)))
+
+fourfoldplot(conf_matrix$table, color = c("#CC6666", "#99CC99"), conf.level = 0, margin = 1, main = "Confusion Matrix")
+
+library(ggplot2)
+
+# Convertir la matriz de confusión en un data frame para ggplot2
+conf_df <- as.data.frame(conf_matrix$table)
+names(conf_df) <- c("Predicted", "Actual", "Freq")
+
+# Crear el gráfico de la matriz de confusión con ggplot2
+ggplot(conf_df, aes(x = Actual, y = Predicted, fill = Freq)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  geom_text(aes(label = Freq), vjust = 1) +
+  labs(title = "Confusion Matrix", x = "Actual", y = "Predicted") +
+  theme_minimal()
+
+svm_coefficients <- t(svm_model$coefs) %*% svm_model$SV
+
+# Calcular la importancia de las características (la magnitud de los coeficientes)
+importance <- apply(abs(svm_coefficients), 2, mean)
+feature_importance <- data.frame(Feature = names(importance), Importance = importance)
+
+# Ordenar las características por importancia
+feature_importance <- feature_importance[order(-feature_importance$Importance), ]
+
+# Crear el plot de importancia de las características
+ggplot(feature_importance, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  xlab("Características") +
+  ylab("Importancia") +
+  ggtitle("Importancia de las Características en el Modelo SVM") +
+  theme_minimal()
+
+```
+
+
+
+

@@ -1,0 +1,60 @@
+---
+title: "Random Forest"
+author: "Diego Rodríguez"
+date: "2024-06-25"
+output: html_document
+params:
+  path: "E:/DOCENCIA/CURS/TFG Alumnos/2023-2024/S02/DIEGO RODRIGUEZ/indexPerillositat/" 
+  fitxer: "datosNivelPartido.RData"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r carregar llibreries}
+library(randomForest)
+library(caret)
+```
+
+```{r carregar la bbdd}
+dconGlobal <- get(load(paste0(params$path, "data/", params$fitxer)))
+```
+
+```{r trainTest}
+set.seed(1994)
+trainIndex <- createDataPartition(dconGlobal$informe, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+Train <- dconGlobal[ trainIndex,]
+Test  <- dconGlobal[-trainIndex,]
+```
+
+
+```{r}
+# Ajustar el modelo de Random Forest
+set.seed(123)  
+rf_model <- randomForest(informe ~ ., data = Train, ntree = 100, importance = TRUE)
+
+# Ver el resumen del modelo
+print(rf_model)
+
+# Importancia de las características
+importance(rf_model)
+varImpPlot(rf_model)
+
+
+print(rf_model$confusion)
+print(rf_model$err.rate)
+
+predictions <- predict(rf_model, Test)
+
+predictions <- ifelse(predictions >= 0.5, 1, 0)
+
+
+conf_matrix <- table(Test$informe, predictions)
+print(conf_matrix)
+
+
+confusionMatrix(conf_matrix)
+```

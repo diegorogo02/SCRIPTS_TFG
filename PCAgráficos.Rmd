@@ -1,0 +1,145 @@
+---
+title: "GRÁFICOS PCA"
+author: "Diego Rodríguez"
+date: "2024-06-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### MAPA DE INDIVIDUOS
+
+```{r}
+# Instalar y cargar paquetes necesarios
+library(factoextra)
+library(ggplot2)
+
+data(dconGlobal)
+
+path <- "/Users/ramitjans/Desktop/DOCENCIA/Assignaturas/TFG/2023-2024/DIEGO RODRIGUEZ/"
+dconGlobal2 <- get(load(paste0(path, "datosPartidos_Clustering.RData")))
+
+varnumGlobal<-which(sapply(dconGlobal2, is.numeric))
+dconGlobal <- dconGlobal2[, varnumGlobal2]
+
+
+# Realizar PCA
+pca_resultGlobal <- prcomp(dconGlobal, scale = TRUE)
+
+# Resumen del resultado PCA
+summary(pca_resultGlobal)
+
+library("corrplot")
+var <- get_pca_var(pca_resultGlobal)
+corrplot(var$cos2[, 1:14], is.corr=FALSE)
+
+fviz_cos2(res.pca, choice = "var", axes = 1:2)
+
+# Visualizar los resultados PCA para los individuos
+fviz_pca_ind(pca_resultGlobal,
+             col.ind = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)    
+```
+
+```{r}
+ind <-  get_pca_ind(pca_resultGlobal)
+
+CoordenadasIndividuos <- data.frame(ind$coord)
+CoordenadasIndividuos <- CoordenadasIndividuos[, 1:14]
+colnames(CoordenadasIndividuos) <- c("Puntuacion", "FaltasAFavor", "Perdidas", 
+                                     "Descalificantes", "Tiempo", "RebotesOfensivos", 
+                                     "Anotacion", "TecnicasJuego", "ProtestasEnAtaque",
+                                     "Antideportiva", "ProtestasGenerales", "Faltas", 
+                                     "Penalizaciones2Puntos", "Mates")
+
+CoordenadasIndividuos$equipo <- dconGlobal2$equipos
+CoordenadasIndividuos$genero <- dconGlobal2$generos
+
+library(dplyr)
+CoordsNew <- CoordenadasIndividuos %>%
+  group_by(equipo, genero) %>%
+  summarise(across(everything(), mean, na.rm = TRUE)) %>%
+  data.frame()
+
+var2 <- "Puntuacion"
+var1 <- "Descalificantes" # Antideportiva
+
+# Definir una paleta de colores
+library(RColorBrewer)
+colors <- brewer.pal(n = length(unique(CoordsNew$genero)), name = "Set1")
+
+# Asignar colores a los individuos basado en la variable 'Grupo'
+color_vector <- colors[as.factor(CoordsNew$genero)]
+
+# Dibujar el gráfico inicial sin puntos´
+{plot(CoordsNew[, var1], CoordsNew[, var2], type = "n", xlab = var1, ylab = var2, xlim = c(-3, 5))
+
+# Agregar los nombres de los individuos con colores
+text(CoordsNew[, var1], CoordsNew[, var2], labels = CoordsNew$equipo, col = color_vector, cex = 0.7, pos = 4)}
+
+
+```
+
+### MAPA DE FLECHAS
+
+```{r}
+# Crear el biplot
+fviz_pca_biplot(pca_resultGlobal, 
+                repel = TRUE, 
+                col.var = "steelblue", invisible = "ind") 
+```
+
+### MAPA DE MODALIDADES
+
+```{r}
+# Visualizar los resultados PCA
+fviz_pca_var(pca_resultGlobal, 
+             col.var = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)    
+```
+
+### MAPA DE INDIVIDUOS
+
+```{r}
+data(dconAgrupado)
+
+varnumAgrupado<-which(sapply(dconAgrupado, is.numeric))
+varnumAgrupado<-dconAgrupado[,varnumAgrupado]
+
+
+# Realizar PCA
+pca_resultAgrupado <- prcomp(varnumAgrupado, scale = TRUE)
+
+# Resumen del resultado PCA
+summary(pca_resultAgrupado)
+
+# Visualizar los resultados PCA para los individuos
+fviz_pca_ind(pca_resultAgrupado,
+             col.ind = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)    
+```
+
+### MAPA DE FLECHAS
+
+```{r}
+# Crear el biplot
+fviz_pca_biplot(pca_resultAgrupado, 
+                repel = TRUE, 
+                col.var = "steelblue", 
+                col.ind = "orange") 
+```
+
+### MAPA DE MODALIDADES
+
+```{r}
+# Visualizar los resultados PCA
+fviz_pca_var(pca_resultAgrupado, 
+             col.var = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)    
+```

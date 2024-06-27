@@ -1,0 +1,158 @@
+---
+title: "PCA"
+author: "Diego Rodríguez"
+date: "2024-04-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(gridExtra)
+# library(ggplot2)
+# library(FactoMineR)
+# library(factoextra)
+library(cluster)
+library(dplyr)
+# library(dendextend)
+```
+
+S'HA DE CANVIAR
+```{r}
+load("BBDDFinal.RData")
+dd <- infoEquipos
+head(dd)
+
+# levels(dd$samerace) <- c("same_no","same_si","same_NA")
+# levels(dd$met) <- c("met_no", "met_si","met_NA")
+# levels(dd$decision) <- c("no","si","NA")
+# levels(dd$decision_o) <- c("p_no","p_si","p_NA")
+# levels(dd$match) <- c("no_match","match","m_NA")
+# head(dd)
+```
+VISUALISATION OF DATA
+```{r}
+# CREATION OF THE DATA FRAME OF CONTINUOUS VARIABLES
+attach(dd)
+dcon<-which(sapply(dd, is.numeric))
+dcon<-dd[,dcon]
+dcon <- select(dcon, -idTeam)
+length(dcon)
+
+#comprobem que no hi hagi cap NA a les variables numèriques
+anyNA(dcon)
+
+# PRINCIPAL COMPONENT ANALYSIS OF dcon
+pc1 <- prcomp(dcon, scale=TRUE)
+class(pc1)
+print(pc1)
+```
+
+
+
+```{r}
+# WHICH PERCENTAGE OF THE TOTAL INERTIA IS REPRESENTED IN SUBSPACES?
+inerProj<- pc1$sdev^2 #inercia a cada PC (VAR)
+totalIner<- sum(inerProj)
+pinerEix<- 100*inerProj/totalIner #percentatge de inèrcia de cada PC
+
+#Barplot de la inèrcia representada per cada PC
+names <- c("PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30","PC31","PC32","PC33","PC34","PC35","PC36","PC37","PC38","PC39","PC40","PC41","PC42","PC43","PC44","PC45","PC46","PC47","PC48","PC49","PC50","PC51","PC52","PC53","PC54","PC55","PC56","PC57","PC58","PC59","PC60","PC61","PC62","PC63","PC64","PC65","PC66","PC67","PC68","PC69","PC70","PC71","PC72","PC73","PC74","PC75","PC76","PC77","PC78","PC79","PC80","PC81","PC82","PC83","PC84","PC85","PC86","PC87","PC88","PC89","PC90","PC91","PC92","PC93","PC94","PC95","PC96","PC97","PC98","PC99","PC100","PC101","PC102","PC103","PC104","PC105","PC106","PC107","PC108","PC109","PC110","PC111","PC112","PC113","PC114","PC115","PC116","PC117","PC118","PC119","PC120","PC121","PC122","PC123","PC124","PC125","PC126","PC127","PC128","PC129","PC130","PC131","PC132","PC133","PC134","PC135","PC136","PC137","PC138","PC139","PC140","PC141","PC142","PC143","PC144","PC145")
+
+bp1 <- barplot(pinerEix,xlab = "Components Principals",ylim = c(0,146),ylab = "Inèrcia (%)",main = "Inèrcia de cada PC",names.arg = names,col = "antiquewhite")
+text(bp1, 0, round(pinerEix, 2),cex=1,pos=3)
+
+#Cummulated Inertia in subspaces, from first principal component to the 11th dimension subspace
+bp2 <- barplot(cumsum(pinerEix), main = "Inèrcia acumulada",names.arg = names,ylab = "Inèrcia (%)",xlab = "Component Principal", col = "antiquewhite")
+text(bp2, 0, round(cumsum(pinerEix), 2),cex=1,pos=1)
+abline(h =80)
+```
+
+```{r}
+# SELECTION OF THE SINGIFICNT DIMENSIONS (keep 80% of total inertia)
+#El component principal que arriba al 80% de la inèrcia total és el PC44
+nd = 44
+
+#Ens quedem només fins el PC-44
+pc1$rotation<-pc1$rotation[,1:nd]
+print(pc1)
+
+# STORAGE OF THE EIGENVALUES, EIGENVECTORS AND PROJECTIONS IN THE nd DIMENSIONS
+head(pc1$x) 
+
+dim(pc1$x)
+dim(dcon)
+#Com es pot veure la dimensió de les dades en el nou espai és la mateixa, seguim
+#tenint, 145 dades per a cadascuna dels 505 individus. 145 variables numèriques.
+
+#Ens quedem només amb les 44 dimensions de cada individu.
+Psi = pc1$x[,1:nd] #PC's dels individus fins al PC44
+dim(Psi)
+
+# STORAGE OF LABELS FOR INDIVIDUALS AND VARIABLES
+iden = row.names(dcon)
+etiq = names(dcon)
+ze = rep(0,length(etiq)) # WE WILL NEED THIS VECTOR AFTERWARDS FOR THE GRAPHICS
+```
+
+
+
+```{r}
+# library(rgl)
+# plot3d(Psi[,1],Psi[,2],Psi[,3])
+
+#Projection of variables
+Phi = cor(dcon,Psi)
+Phi
+```
+
+```{r}
+# Farem el següent per tal de poder eliminar variables redundants
+set.seed(123)
+# carreguem les llibreries
+install.packages("mlbench")
+library(mlbench)
+library(caret)
+# calculem la matriu de correlació
+correlationMatrix <- cor(dcon[,1:145])
+# veiem la matriu de correlació
+print(correlationMatrix)
+# busquem aquells atributs que estan altament correlacionats (>0,75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.75)
+# veiem aquelles variables que estan altament correlacionats
+print(highlyCorrelated)
+```
+```{r}
+# Farem el següent per tal de poder veure la importància de les variables
+# definim l'esquema de entrenament
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# entrenem el model
+model <- train(informe~., data=dcon, method="lm", preProcess="scale", trControl=control)
+# estimem la importància de les variables
+importance <- varImp(model, scale=FALSE)
+# veiem reflexada la imporància
+print(importance)
+# grafiquem la importància
+plot(importance)
+```
+
+```{r}
+
+# Farem el següent per tal de dur a terme la selecció de variables
+#carreguem les llibreries
+install.packages("randomForest")
+library(randomForest)
+# definim el control utilitzant la selecció de variables random forest
+control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+# Apliquem l'algoritme RFE
+results <- rfe(dcon[,1:144], dcon[,145], sizes=c(1:145), rfeControl=control)
+# veiem els resultas
+print(results)
+# allistem les variables seleccionades
+predictors(results)
+# grafiquem els resultats
+plot(results, type=c("g", "o"))
+```
+

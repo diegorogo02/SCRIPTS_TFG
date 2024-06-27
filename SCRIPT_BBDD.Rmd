@@ -1,0 +1,583 @@
+---
+title: "BBDD"
+author: "Diego Rodríguez"
+date: "2024-04-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+PATH <- 'D:/UNI/TFG/'
+# Definim i creem els directoris si es necessari
+DATADIR    <- paste(PATH, 'data',   sep = '')  # Las bases de datos procesadas
+INPUTDIR   <- paste(PATH, 'input',  sep = '')  # Los ficheros recién descargados de la pàgina web
+OUTPUTDIR  <- paste(PATH, 'output', sep = '')  # Bases de datos finales y material neceario para la creación de la documentación
+TEMPDIR    <- paste(PATH, 'temp',   sep = '')  # Ficheros intermedios que se puedan eliminar
+SYNTAXDIR  <- paste(PATH, 'syntax', sep = '')  # Scripts de R
+DOCDIR     <- paste(PATH, 'doc',    sep = '')  # Documentación
+
+if (! file.exists(DATADIR))    { dir.create(DATADIR);    cat('Carpeta creada:', DATADIR,    '\n') }
+if (! file.exists(INPUTDIR))   { dir.create(INPUTDIR);   cat('Carpeta creada:', INPUTDIR,   '\n') }
+if (! file.exists(OUTPUTDIR))  { dir.create(OUTPUTDIR);  cat('Carpeta creada:', OUTPUTDIR,  '\n') }
+if (! file.exists(TEMPDIR))    { dir.create(TEMPDIR);    cat('Carpeta creada:', TEMPDIR,    '\n') }
+if (! file.exists(SYNTAXDIR))  { dir.create(SYNTAXDIR);  cat('Carpeta creada:', SYNTAXDIR,  '\n') }
+if (! file.exists(DOCDIR))     { dir.create(DOCDIR);     cat('Carpeta creada:', DOCDIR,     '\n') }
+
+# Adaptem rutes
+INPUTDIR   <- paste(INPUTDIR,   '/', sep = '')
+OUTPUTDIR  <- paste(OUTPUTDIR,  '/', sep = '')
+TEMPDIR    <- paste(TEMPDIR,    '/', sep = '')
+SYNTAXDIR  <- paste(SYNTAXDIR,  '/', sep = '')
+DATADIR    <- paste(DATADIR,    '/', sep = '')
+DOCDIR     <- paste(DOCDIR,     '/', sep = '')
+
+# Rutas específicas
+RUTAQUESTIONARIO <- paste(INPUTDIR, "NuMa/QuestionnaireResponses/", sep = "")
+
+# ==============================================================================
+# 3. Libraries
+list.of.packages <- c("readxl") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages) > 0) {
+  install.packages(new.packages)
+}
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages)
+
+# ==============================================================================
+# 5. Opcions de l'entorn
+options(scipen = 999)
+options(stringsAsFactors = FALSE)
+
+# ==============================================================================
+# 6. Indice de proyecto
+# source(paste(SYNTAXDIR, '00_indiceProyecto.R', sep = ''))
+
+# ==============================================================================
+```
+
+```{r}
+# ==============================================================================
+# Cargamos librerias necesarias
+list.of.packages = c("rvest", "jsonlite") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])] 
+if(length(new.packages) > 0) { 
+  install.packages(new.packages) 
+} 
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages) 
+
+# ==============================================================================
+# Creamos parámetros:
+## Jornadas: 
+jornadas <- 1:17
+urlsCopa <- c("15094", "15090")
+
+# ==============================================================================
+# Creamos la lista para guardar los códigos
+codigosFinal <- c()
+generos <- c()
+
+## COSAS HACER: buscar enlace para el femenino, el que hay es para el masculino
+for (urlGen in urlsCopa) {
+  if (urlGen == "15094") {
+    genero <- "MASC"
+  } else {
+    genero <- "FEM"
+  }
+  for (jor in jornadas) {
+    url <- paste0("https://www.basquetcatala.cat/competicions/resultats/", urlGen, "/", jor)
+    pagina <- read_html(url)
+    
+    # Extraemos todas las urls
+    enlaces <- pagina %>%
+      html_nodes("a") %>%
+      html_attr("href")
+    
+    # Nos quedamos con aquellos enlaces que contiene la palabra estadísticas
+    enlacesstats <- grep("estadistiques", enlaces, value = T)
+    
+    # Nos quedamos exclusivamente los códigos de las estadísticas
+    codigos <- unlist(strsplit(enlacesstats, split = "/"))[c(F, F, F, F, T)]
+    codigosFinal <- c(codigosFinal, codigos)
+    generos <- c(generos, rep(genero, length(codigos)))
+  }
+}
+
+infoEstadistica <- data.frame(codigosFinal, generos)
+
+# ------------------------------------------------------------------------------
+# A continuación vamos a extraer los ficheros contenidos con la información del partido
+# Existen 2 JSON por lo tanto guardaremos la información de estos 2 JSONs.
+
+## lista para guardar movimientos
+movimientos <- list()
+
+## Lista para guardar las estadisticas
+estadisticas <- list()
+
+for (cod in infoEstadistica[, "codigosFinal"]) {
+  # Creamos las rutas necesarias 
+  URLstat <- paste0("https://msstats.optimalwayconsulting.com/v1/fcbq/getJsonWithMatchStats/", cod, "?currentSeason=true")
+  URLmove <- paste0("https://msstats.optimalwayconsulting.com/v1/fcbq/getJsonWithMatchMoves/", cod, "?currentSeason=true")
+  
+  # Leemos los dos JSON
+  stat <- fromJSON(URLstat)
+  estadisticas[[cod]] <- stat
+  
+  move <- fromJSON(URLmove)
+  movimientos[[cod]] <- move
+}
+# ==============================================================================
+# Guardamos los ficheros obtenidos
+save(infoEstadistica, file = paste0(DATADIR, "tablaCodigosStats.RData"))
+save(estadisticas, file = paste0(DATADIR, "estadisticas.RData"))
+save(movimientos, file = paste0(DATADIR, "movimientos.RData"))
+
+# ==============================================================================
+```
+
+```{r}
+# Creamos parámetros:
+## Jornadas: 
+jornadas <- 1:17
+urlsCopa <- c("15094", "15090")
+
+# ==============================================================================
+# Vamos a obtener la información referente a las fichas de partido y las actas de
+# juego para poder sacar mas información al respecto del partido 
+
+idPartidos <- c()
+generos <- c()
+
+for (urlG in urlsCopa) {
+  if (urlG == "15094") {
+    genero <- "MASC"
+  } else {
+    genero <- "FEM"
+  }
+  for (jor in jornadas) {
+  url <- paste0("https://www.basquetcatala.cat/competicions/resultats/", urlG, "/", jor)
+  pagina <- read_html(url)
+  
+  # Extraemos todas las urls
+  enlaces <- pagina %>%
+    html_nodes("a") %>%
+    html_attr("href")
+  
+  # Nos quedamos con aquellos enlaces que contiene la palabra estadísticas
+  enlacesstats <- grep("acta", enlaces, value = T)
+  
+  # Nos quedamos exclusivamente los códigos de las estadísticas
+  codigos <- unlist(strsplit(enlacesstats, split = "/"))[c(F, F, F, F, T)]
+  idPartidos <- c(idPartidos, codigos)
+  generos <- c(generos, rep(genero, length(codigos)))
+  }
+}
+
+infoPartido <- data.frame(idPartidos, generos)
+
+# ------------------------------------------------------------------------------
+# A continuación guardamos la información referente a los ids de las fitxas
+
+## Información a guardar
+nomsL <- c(); nomsV <- c(); marLs <- c(); marVs <- c(); grups <- c(); 
+datas <- c(); hores <- c(); instalacions <- c(); idPartits <- c(); 
+equipArbitrals <- c(); actesDigials <- c()
+
+for (id in infoPartido[, "idPartidos"]) {
+  url <- paste0("https://www.basquetcatala.cat/acta/", id)
+  pagina <- read_html(url)
+  
+  # Extraemos la informacion necesaria
+  nomL <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[1]/div/div/div[7]/h4/a/strong') %>%
+    html_text2()
+  nomsL <- c(nomsL, nomL)
+  
+  nomV <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[1]/div/div/div[9]/h4/a/strong') %>%
+    html_text2()
+  nomsV <- c(nomsV, nomV)
+  
+  marL <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[1]/div/div/div[1]/h1') %>%
+    html_text2()
+  marLs <- c(marLs, marL)
+  
+  marV <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[1]/div/div/div[3]/h1') %>%
+    html_text2()
+  marVs <- c(marVs, marV)
+  
+  grup <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[3]/div[2]') %>%
+    html_text2()
+  grups <- c(grups, grup)
+  
+  data <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[3]/div[3]') %>%
+    html_text2()
+  datas <- c(datas, data)
+  
+  hora <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[3]/div[4]') %>%
+    html_text2()
+  hores <- c(hores, hora)
+  
+  insta <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[3]/div[5]') %>%
+    html_text2()
+  instalacions <- c(instalacions, insta)
+  
+  idPartit <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[3]/div[6]') %>%
+    html_text2()
+  idPartits <- c(idPartits, idPartit) 
+  
+  equipA <- pagina %>%
+    html_node(xpath = '//*[@id="match-page"]/div[3]/div[10]') %>%
+    html_text2()
+  equipArbitrals <- c(equipArbitrals, equipA)
+}
+
+infoPartits <- data.frame(generos, nomsL, marLs, nomsV, marVs, grups, datas, hores, instalacions, idPartits, equipArbitrals)
+# ==============================================================================
+# Guardamos la información
+save(infoPartits, file = paste0(DATADIR, "infoPartidos.RData"))
+```
+
+```{r}
+# Cargamos librerias necesarias
+list.of.packages = c("readxl") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])] 
+if(length(new.packages) > 0) { 
+  install.packages(new.packages) 
+} 
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages) 
+
+# ==============================================================================
+# Leemos la base de datos
+informes <- data.frame(read_excel(paste0(INPUTDIR, "Libro3.xlsx")))
+# ==============================================================================
+# Guardamos la información obtenida
+save(informes, file = paste0(DATADIR, "informes.RData"))
+
+# ==============================================================================
+```
+```{r}
+# Cargamos librerias necesarias
+list.of.packages = c("ggplot2", "dplyr", "reshape2") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])] 
+if(length(new.packages) > 0) { 
+  install.packages(new.packages) 
+} 
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages) 
+
+# ==============================================================================
+# Leemos la base de datos
+movimientos <- get(load(paste0(DATADIR, "movimientos.RData")))
+estadisticas <- get(load(paste0(DATADIR, "estadisticas.RData")))
+
+# ==============================================================================
+# Extraemos para cada partido, la información por club
+
+listaMatch <- list()
+
+for (id in names(movimientos)) {
+	dades <- movimientos[[id]]
+	estats <- estadisticas[[id]]
+
+	# Calculamos el tiempo que transcurre en todo el partido
+	jugadas <- nrow(dades)
+  
+	# Informació inicial
+	inicio <- dades[1, c("min", "sec", "timestamp")]
+	inicio$hora <- as.numeric(substr(inicio$timestamp, 9, 10))
+	inicio$minutos <- as.numeric(substr(inicio$timestamp, 11, 12))
+	inicio$segundos <- as.numeric(substr(inicio$timestamp, 13, 14))
+	inicio$tiempoPartido <- 600 - (inicio$min*60 + inicio$sec)
+	
+	minSumar <- trunc(inicio$tiempoPartido/60)
+	segSumar <- inicio$tiempoPartido %% 60
+	
+	inicio$minutos <- inicio$minutos + minSumar
+	inicio$segundos <- inicio$segundos + segSumar
+	
+	if (inicio$segundos >= 60) {
+		minSumar <- trunc(inicio$segundos/60)
+		inicio$minutos <- inicio$minutos + minSumar
+		inicio$segundos <- inicio$segundos %% 60
+	} 
+	
+	final <- dades[jugadas, c("min", "sec", "timestamp")]
+	final$hora <- as.numeric(substr(final$timestamp, 9, 10))
+	final$minutos <- as.numeric(substr(final$timestamp, 11, 12))
+	final$segundos <- as.numeric(substr(final$timestamp, 13, 14))
+	final$tiempoPartido <- (final$min*60 + final$sec)
+	
+	minSumar <- trunc(final$tiempoPartido/60)
+	segSumar <- final$tiempoPartido %% 60
+	
+	final$minutos <- final$minutos + minSumar
+	final$segundos <- final$segundos + segSumar
+	
+	if (final$segundos >= 60) {
+		minSumar <- trunc(final$segundos/60)
+		final$minutos <- final$minutos + minSumar
+		final$segundos <- final$segundos %% 60
+	} 
+  
+	horaInicioReal <- paste0(sprintf("%0.2d", inicio$hora), ":", sprintf("%0.2d", inicio$minutos), ":", sprintf("%0.2d", inicio$segundos))
+    horaFinalReal <- paste0(sprintf("%0.2d", final$hora), ":", sprintf("%0.2d", final$minutos), ":", sprintf("%0.2d", final$segundos))
+
+	# Generamos la información correspondiente al partido
+
+	infobasica <- estats$teams[, c("teamIdIntern", "name")]
+	infopart <- estats$teams$data[, c("score", "valoration", "shot")]
+
+	infobasica <- cbind(infobasica, infopart)
+	
+	# Incorporamos las horas de inicio y final
+	infobasica$horaInicioReal <- as.POSIXct(horaInicioReal, format = "%H:%M:%S")
+	infobasica$horaFinalReal <- as.POSIXct(horaFinalReal, format = "%H:%M:%S")
+	infobasica$tiempoJuego <- difftime(infobasica$horaFinalReal, infobasica$horaInicioReal, units = "mins")
+
+	## Nos quedamos solo con las columnas necesarias
+	cols <- c("idTeam", "move", "period")
+	dades <- dades[, cols]
+
+	# Introduim el id del partit i una variable de 1 per fer la suma
+	dades$idMatch <- id
+	dades$suma <- 1
+
+	# Cambiem el nom de les categories per ferles mes curtes
+	dades[grep("Cistella de 1", dades$move), "move"] <- "Anot1p"
+	dades[grep("Cistella de 2", dades$move), "move"] <- "Anot2p"
+	dades[grep("Cistella de 3", dades$move), "move"] <- "Anot3p"
+	dades[grep("Entra al camp", dades$move), "move"] <- "SubstEntr"
+	dades[grep("Surt del camp", dades$move), "move"] <- "SubstSalida"
+	dades[grep("Esmaixada", dades$move), "move"] <- "Mate"
+	dades[grep("Falta en atac", dades$move), "move"] <- "Atac"
+	dades[grep("Assitència", dades$move), "move"] <- "Assis"
+	dades[grep("Falta rebuda", dades$move), "move"] <- "FaltaReb"
+	dades[grep("Intent fallat de 1", dades$move), "move"] <- "Fallo1p"
+	dades[grep("Intent fallat de 2", dades$move), "move"] <- "Fallo2p"
+	dades[grep("Intent fallat de 3", dades$move), "move"] <- "Fallo3p"
+	dades[grep("Pèrdua", dades$move), "move"] <- "Perd"
+	dades[grep("Personal", dades$move), "move"] <- "Falta"
+	dades[grep("1 tir lliure", dades$move), "move"] <- "TL1"
+	dades[grep("2 tirs lliures", dades$move), "move"] <- "TL2"
+	dades[grep("3 tirs lliures", dades$move), "move"] <- "TL3"
+	dades[grep("Rebot defensiu", dades$move), "move"] <- "RebDef"
+	dades[grep("Rebot ofensiu", dades$move), "move"] <- "RebOf"
+	dades[grep("Recuperació", dades$move), "move"] <- "Recup"
+	dades[grep("Temps mort", dades$move), "move"] <- "TM"
+	dades[grep("Antiesportiva ", dades$move), "move"] <- "U"
+	dades[grep("Desqualificant de partit", dades$move), "move"] <- "D"
+	dades[grep("Tècinca banqueta", dades$move), "move"] <- "TB"
+	dades[grep("Tècnica entrenador", dades$move), "move"] <- "TC"
+	dades[grep("Tècnica", dades$move), "move"] <- "T"
+
+	## Realitzem la taula que volem 
+	dades$move <- paste0(dades$move, "_", dades$period)
+	dades$period <- NULL
+
+	taula <- reshape2::dcast(dades, idMatch + idTeam ~ move, fun.aggregate = sum, value.var = "suma", na.rm = TRUE)
+
+	m <- match(taula$idTeam, infobasica$teamIdIntern)
+	taula[, c("name", "score", "valoration", "shot", "tiempoJuego")] <- infobasica[m, c("name", "score", "valoration", "shot", "tiempoJuego")]
+	
+	listaMatch[[id]] <- taula
+}
+
+
+# Nos quedamos con el nombre de todas las columnas del df 
+nombres_columnas <- unique(unlist(lapply(listaMatch, names)))
+nombres_columnas[order(nombres_columnas)]
+
+resultado <- dplyr::bind_rows(listaMatch)
+
+resultado <- resultado %>% dplyr::mutate_all(~replace(., is.na(.), 0))
+
+# ==============================================================================
+save(resultado, file = paste0(DATADIR, "infoxEquipos.RData"))
+
+# ==============================================================================
+```
+
+```{r}
+# Cargamos librerias necesarias
+list.of.packages = c("ggplot2", "dplyr", "reshape2") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])] 
+if(length(new.packages) > 0) { 
+  install.packages(new.packages) 
+} 
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages) 
+
+# ==============================================================================
+# Leemos la base de datos
+infoPartits <- get(load(paste0(DATADIR, "infoPartidos.RData")))
+
+# ==============================================================================
+# Realizamos el preprocessing de les bbdd 
+infoPartits$grups <- gsub("Grup: ", "", infoPartits$grups)
+infoPartits$datas <- gsub("Data partit: ", "", infoPartits$datas)
+infoPartits$hores <- gsub("Hora partit: ", "", infoPartits$hores)
+infoPartits$instalacions <- gsub("Instal·lació: ", "", infoPartits$instalacions)
+
+llistaUbis <- strsplit(infoPartits$instalacions, split = "\n", fixed = TRUE)
+infoPartits$direccio <- NA
+infoPartits$dutxes <- NA
+
+for (i in 1:nrow(infoPartits)) {
+  infoPartits$instalacions[i] <- llistaUbis[[i]][1]
+  infoPartits$direccio[i] <- llistaUbis[[i]][2]
+  if (is.na(llistaUbis[[i]][3])) {
+    infoPartits$dutxes[i] <- "Si"  
+  } else {
+    infoPartits$dutxes[i] <- "No"
+  }
+}
+
+infoPartits$idPartits <- gsub("Partit: ", "", infoPartits$idPartits)
+
+# Ara farem la traducció de les dades dels árbitres
+ddA <- strsplit(infoPartits$equipArbitrals, split = "\n", fixed = TRUE)
+
+infoPartits[, c("AP", "AA", "AN", "CR", "RLL", "CALLER", "AJ")] <- NA
+
+for (i in 1:nrow(infoPartits)) {
+  ddAind <- ddA[[i]]
+  ddAind <- ddAind[which(ddAind != "")]
+  
+  infoPartits$AP[i] <- ddAind[which(ddAind == "Àrbitre/a Principal:") + 1]
+  infoPartits$AA[i] <- ddAind[which(ddAind == "Àrbitre/a Auxiliar:") + 1]
+  infoPartits$AN[i] <- ddAind[which(ddAind == "Anotador/a:") + 1]
+  infoPartits$CR[i] <- ddAind[which(ddAind == "Cronometrador/a:") + 1]
+  infoPartits$RLL[i] <- ddAind[which(ddAind == "Operador/a RLL:") + 1]
+  existeix <- which(ddAind == "Caller 1:")
+  if (length(existeix) != 0) {
+    infoPartits$CALLER[i] <- ddAind[existeix + 1]
+  } else {
+    infoPartits$CALLER[i] <- NA
+  }
+  existeix <- which(ddAind == "Ajudant/a Anotador:")
+  if (length(existeix) != 0) {
+    infoPartits$AJ[i] <- ddAind[existeix + 1] 
+  } else {
+    infoPartits$AJ[i] <- NA
+  }
+}
+
+infoPartits$equipArbitrals <- NULL
+
+idNAS <- which(is.na(infoPartits$CALLER))
+infoPartits$CALLER[idNAS] <- infoPartits$AJ[idNAS]
+infoPartits$AJ[idNAS] <- NA
+
+# ==============================================================================
+save(infoPartits, file = paste0(DATADIR, "infoPartidos.RData"))
+```
+
+```{r}
+# Cargamos librerias necesarias
+list.of.packages = c("ggplot2") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])] 
+if(length(new.packages) > 0) { 
+  install.packages(new.packages) 
+} 
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages) 
+
+# ==============================================================================
+# Leemos la base de datos
+informes <- get(load(paste0(DATADIR, "informes.RData")))
+
+# ==============================================================================
+# Vamos a filtrar por nombre de catgoria para conocer si exite las categorias de super copa
+table(informes[, "nomCategoriaInscrita1"])
+
+# Detectamos que existen 35 de SUPERCOPA MASCULINA y 17 de SUPERCOPA FEMENINA
+## Nos quedamos con estas entradas
+quien <- which(informes[, "nomCategoriaInscrita1"] %in% c("SUPER COPA MASCULINA", "SUPER COPA FEMENINA"))
+informes <- informes[quien, ]
+
+# ==============================================================================
+# Guardamos el fichero obtenido
+save(informes, file = paste0(DATADIR, "informesPrepro.RData"))
+
+# ==============================================================================
+```
+
+
+```{r}
+list.of.packages = c("ggplot2", "dplyr", "reshape2") 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])] 
+if(length(new.packages) > 0) { 
+  install.packages(new.packages) 
+} 
+lapply(list.of.packages, require, character.only = T)
+rm(list.of.packages, new.packages) 
+
+# ==============================================================================
+# Leemos la base de datos
+infoPartidos <- get(load(paste0(DATADIR, "infoPartidos.RData")))
+informes <- get(load(paste0(DATADIR, "informesPrepro.RData")))
+infoEquipos <- get(load(paste0(DATADIR, "infoxEquipos.RData")))
+estadisticas <- get(load(paste0(DATADIR, "estadisticas.RData")))
+
+# ==============================================================================
+# Creamos la tabla que permite enlazar los partidos según su id
+listaIds <- list()
+
+for (id in names(estadisticas)) {
+	equipoLocal <- estadisticas[[id]]$teams$name[1]
+	equipoVisit <- estadisticas[[id]]$teams$name[2]
+	dataf <- data.frame(id = id, equipoLocal = equipoLocal, equipoVisit = equipoVisit)
+	listaIds[[id]] <- dataf
+}
+
+tablaComparativa <- do.call(rbind, listaIds)
+rownames(tablaComparativa) <- NULL
+
+# ------------------------------------------------------------------------------
+# Vamos a identificar cuales tienen informe i cuales no los tiene 
+tablaComparativa$idPartit <- paste0(tablaComparativa$equipoLocal, "_", tablaComparativa$equipoVisit)
+informes$idunion <- paste0(informes$nomEquipLocal1 , "_", informes$nomEquipVisitant1)
+
+m <- match(tablaComparativa$idPartit, informes$idunion)
+tablaComparativa$informe <- informes[m, "status"]
+tablaComparativa$informe[which(is.na(tablaComparativa$informe))] <- 0
+
+# ------------------------------------------------------------------------------
+# Añadimos el indicador de si se tiene o no informe a la base de datos de equipos
+# m <- match(infoEquipos$idMatch, tablaComparativa$id)
+# infoEquipos[, "informe"] <- tablaComparativa[m, "informe"]
+
+# ------------------------------------------------------------------------------
+# Añadimos la información respecto los partidos 
+infoPartidos$idunion <- paste0(infoPartidos$nomsL, "_", infoPartidos$nomsV)
+m <- match(tablaComparativa$idPartit, infoPartidos$idunion)
+
+tablaComparativa[, colnames(infoPartidos)] <- infoPartidos[m, ]
+
+# ------------------------------------------------------------------------------
+# Añadimos la información en la base de datos de equipo y sera la base de datos final
+m <- match(infoEquipos$idMatch, tablaComparativa$id)
+infoEquipos[, colnames(tablaComparativa)] <- tablaComparativa[m, ]
+
+# ==============================================================================
+# Guardamos la base de datos final a partir de aqui, tocarà realizar los métodos 
+save(infoEquipos, file = paste0(DATADIR, "BBDDFinal.RData"))
+
+# ==============================================================================
+```
+
+

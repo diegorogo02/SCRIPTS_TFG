@@ -1,0 +1,120 @@
+---
+title: "CLUSTERING"
+author: "Diego Rodríguez"
+date: "2024-06-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# ==============================================================================
+# CLUSTERING 
+# ==============================================================================
+
+library(cluster)
+library(FactoMineR)
+
+# ==============================================================================
+# Rutas: 
+path <- "D:\\UNI\\TFG\\"
+DATADIR <- paste0(path, "data\\")
+
+# ==============================================================================
+# Leemos los datos
+datos <- get(load(paste0(DATADIR, "datosNivelEquipo.RData"))); rm(dconAgrupado)
+
+# ==============================================================================
+# Convertimos las bbdd en texto
+rownames(datos) <- datos[, 1]
+datos[, 1] <- NULL
+datos[, "generos"] <- as.factor(datos[, "generos"])
+
+# ==============================================================================
+# Creamos el clustering
+distancia <- "gower"
+agrupacion <- "ward.D2"
+
+matrizDistancias <- daisy(datos, metric = distancia, stand = TRUE)
+matrizDistancias <- matrizDistancias^2
+cluster <- hclust(matrizDistancias, method = agrupacion)
+plot(cluster)
+
+library(dendextend)
+as.dendrogram(cluster) %>% set("branches_k_color", k = 2) %>% plot(main = "Nice defaults")
+
+datos$clusters <- as.character(cutree(cluster, k = 2))
+
+# ==============================================================================
+# Profiling 
+library(FactoMineR)
+plot(catdes(datos, num.var = 29), cex.names = 1.5)
+
+# ==============================================================================
+# ==============================================================================
+# Hacemos el cluster SIN género 
+datosSG <- datos[, 2:ncol(datos)-1]
+
+# Creamos el clustering
+distancia <- "euclidean"
+agrupacion <- "ward.D2"
+
+matrizDistancias <- dist(datosSG, method = distancia)
+cluster <- hclust(matrizDistancias, method = agrupacion)
+plot(cluster)
+
+library(dendextend)
+as.dendrogram(cluster) %>% set("branches_k_color", k = 3) %>% plot(main = "Nice defaults")
+
+datosSG$clusters3 <- as.character(cutree(cluster, k = 3))
+
+# Profiling 
+library(FactoMineR)
+plot(catdes(datosSG, num.var = 29), cex.names = 1.5)
+
+# ==============================================================================
+# ==============================================================================
+# Por generos 
+datosM <- datos[which(datos$generos == "MASC"), 2:ncol(datos)-1]
+
+# Creamos el clustering
+distancia <- "euclidean"
+agrupacion <- "ward.D2"
+
+matrizDistancias <- dist(datosM, method = distancia)
+cluster <- hclust(matrizDistancias, method = agrupacion)
+plot(cluster)
+
+library(dendextend)
+as.dendrogram(cluster) %>% set("branches_k_color", k = 3) %>% plot(main = "Nice defaults")
+
+datosM$clusters3 <- as.character(cutree(cluster, k = 3))
+
+# Profiling 
+library(FactoMineR)
+plot(catdes(datosM, num.var = 29), cex.names = 1.5)
+
+# ------------------------------------------------------------------------------
+# Por generos 
+datosF <- datos[which(datos$generos == "FEM"), 2:ncol(datos)-1]
+
+# Creamos el clustering
+distancia <- "euclidean"
+agrupacion <- "ward.D2"
+
+matrizDistancias <- dist(datosF, method = distancia)
+cluster <- hclust(matrizDistancias, method = agrupacion)
+plot(cluster)
+
+library(dendextend)
+as.dendrogram(cluster) %>% set("branches_k_color", k = 2) %>% plot(main = "Nice defaults")
+
+datosF$clusters2 <- as.character(cutree(cluster, k = 2))
+
+# Profiling 
+library(FactoMineR)
+plot(catdes(datosM, num.var = 29), cex.names = 1.5)
+```
+

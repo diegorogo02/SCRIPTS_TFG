@@ -1,0 +1,153 @@
+---
+title: "Anàlisi Descriptiu"
+author: "Diego Rodríguez"
+date: "2024-05-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(ggpubr)
+library(corrplot)
+library(knitr)
+library(psych)
+library(faraway)
+library(dplyr)
+library(kableExtra)
+```
+
+```{r}
+numeric_vars <- dconGlobal[, sapply(dconGlobal, is.numeric)]
+```
+
+## Tablas Descriptivas
+
+```{r}
+kable(describe(numeric_vars),
+      caption ="Descripció Univariant Variables Numèriques",
+      
+      align = "c",digits=2,booktabs = T) %>% 
+  kable_styling(position = "center", 
+                latex_options = c("HOLD_position","scale_down"),  font_size = 9)
+
+```
+
+Histograma de las variables Numericas
+```{r}
+for (variable in colnames(varnumGlobal)) {
+  # Histograma
+  hist(varnumGlobal[[variable]], main = paste("Histograma de", variable),
+       xlab = variable, ylab = "Frecuencia")
+}
+```
+
+```{r}
+for(variable in colnames(numeric_vars)) {
+  boxplot(numeric_vars[[variable]], main = paste("Diagrama de Caixa de", variable),
+          ylab = variable)
+}
+```
+
+
+##CATEGÒRIQUES
+
+```{r}
+cat_vars <- dconGlobal[, sapply(dconGlobal, function(x) is.factor(x) || is.character(x))]
+```
+
+```{r}
+for(variable in colnames(cat_vars)) {
+  cat_vars[[variable]] <- as.factor(cat_vars[[variable]])
+}
+```
+
+```{r}
+for(variable in colnames(cat_vars)) {
+  barplot(table(cat_vars[[variable]]), main = paste("Taula de Freqüències", variable),
+          ylab = variable)
+}
+```
+```{r}
+for (variable in colnames(cat_vars)) {
+  # Tabla de frecuencias
+  tabla_frecuencias <- table(variable)
+  tabla_frecuencias
+}
+```
+
+```{r}
+for(variable in colnames(cat_vars)) {
+  pie(table(cat_vars[[variable]]), main = paste("Gràfic de Sectors de", variable))
+}
+```
+
+# Análisis bivariante de las variables numéricas
+
+# VARIABLE RESPUESTA
+# Underdog_win
+```{r}
+pp <- varnumGlobal$score/varnumGlobal$tiempoJuego
+EFG <- ((varnumGlobal$Anot2p+varnumGlobal$Anot3p + (0.5*varnumGlobal$Anot3p))/(varnumGlobal$Anot2p+varnumGlobal$Anot3p+varnumGlobal$Fallo2p+varnumGlobal$Fallo3p))
+TOV <- varnumGlobal$Perd/(varnumGlobal$Anot2p+varnumGlobal$Anot3p+varnumGlobal$Fallo2p+varnumGlobal$Fallo3p+(0.44*(varnumGlobal$Anot1p+varnumGlobal$Fallo1p))+varnumGlobal$Perd)
+FTR <- varnumGlobal$Anot1p/(varnumGlobal$Anot2p+varnumGlobal$Anot3p+varnumGlobal$Fallo2p+varnumGlobal$Fallo3p)
+varnumGlobal <- cbind(varnumGlobal, pp, EFG, TOV, FTR)
+for(variable in colnames(varnumGlobal)) {
+    boxplot(varnumGlobal[[variable]] ~ dconGlobal$informe, main = paste("Boxplot de", variable), col = "lightblue")
+}
+```
+
+
+```{r}
+f_informe <- as.factor(dconGlobal$informe)
+```
+
+```{r}
+for(variable in colnames(cat_vars)) {
+mosaicplot(table(cat_vars[[variable]], dconGlobal$informe), main = paste("Mosaic Plot", variable), col = "lightblue")
+}
+```
+
+
+## Bivariante con Variable Objetivo
+## Medio mal
+```{r}
+ggplot(dconGlobal = dconGlobal, aes(x = l_bp_p, y = minutes, color = minutes)) +
+  geom_jitter()  +
+  scale_color_gradient(low = "palevioletred", high = "lightpink") +
+  theme_minimal()
+
+#cor(bd$Velocidad_viento_mph,bd$Visibilidad_mi,method = "pearson", use="complete.obs")
+
+```
+
+## Idea para cruzar mas variables
+```{r}
+cor_matrix <- cor(varnumGlobal)
+cor_matrix
+num_vars_without_NA <- na.omit(varnumGlobal)
+cor_matrix2 <- cor(num_vars_without_NA)
+View(cor_matrix2)
+
+posiciones <- which(abs(cor_matrix2) > 0.1 & cor_matrix2 < 1, arr.ind = TRUE)
+
+variables_seleccionadas <- colnames(cor_matrix2)[unique(c(posiciones[, 1], posiciones[, 2]))]
+variables_seleccionadas
+
+combin_cor <- list()
+cols_cor_matrix <- ncol(cor_matrix2)
+umbral <- 0.1
+
+
+for (i in 1:(cols_cor_matrix)) {
+  for (j in 1:(cols_cor_matrix)) {
+    correlacion <- cor_matrix2[i, j]
+    if (abs(correlacion) > umbral & correlacion != 1) {  # Comprobar si la correlación es mayor que 0.1 (o el umbral deseado)
+      combin_cor <- (combin_cor[[paste(colnames(cor_matrix2)[i], colnames(cor_matrix2)[j])]])
+    }
+  }
+}
+
+print(combin_cor)
+```
+
